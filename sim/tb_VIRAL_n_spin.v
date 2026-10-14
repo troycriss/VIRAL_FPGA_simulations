@@ -15,6 +15,10 @@
 //
 // GAMMA_LO, if nonzero, replaces the low 16 bits of every gamma from angle_lut
 // (whose entries all have zero low bits), to test the full 32-bit gamma.
+//
+// DUMP_FILE, if set, gets the final spins (one %h line each), the energy, the
+// LEDs and the clock count, for comparison with the Rust model
+// (simulator/check_hw.sh).
 
 module tb_VIRAL_n_spin;
 
@@ -25,6 +29,7 @@ parameter WEIGHT_FILE = "";
 parameter LED_LSB   = 8;
 parameter FLOAT_TOL = 0.01;
 parameter GAMMA_LO  = 0;
+parameter DUMP_FILE = "";
 
 localparam PI = 3.141592653589793;
 
@@ -113,6 +118,7 @@ real fa [0:N_SPINS-1];
 
 integer i, j, layer;
 integer errors = 0;
+integer dump_fd;
 
 reg signed [127:0] s_sum;
 reg signed [127:0] h;
@@ -280,6 +286,16 @@ initial begin
 	if (max_err > FLOAT_TOL) begin
 		$display("  float model: max error %f > %f", max_err, FLOAT_TOL);
 		errors = errors + 1;
+	end
+
+	if (DUMP_FILE != "") begin
+		dump_fd = $fopen(DUMP_FILE, "w");
+		for (i = 0; i < N_SPINS; i = i + 1)
+			$fdisplay(dump_fd, "%h", dut.spins.spin_mem[i]);
+		$fdisplay(dump_fd, "energy %0d", $signed(dut.total_energy));
+		$fdisplay(dump_fd, "led %b", led);
+		$fdisplay(dump_fd, "clocks %0d", dut.final_time);
+		$fclose(dump_fd);
 	end
 
 	// 4. a reset reloads the initial state, so a second run gives the same result

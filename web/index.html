@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VIRAL Spin Simulator</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+	<div class="titlerow">
+		<div class="title">
+			<h1>VIRAL mean-field QAOA simulator</h1>
+			<p class="sub">Spins evolved layer by layer by <code>viral-sim</code>, with the FPGA design's bit-exact arithmetic or in floating point.</p>
+		</div>
+		<div class="tabs" role="tablist" aria-label="Mode">
+			<button type="button" role="tab" id="tabRun" data-tab="run" aria-selected="true">Single run</button>
+			<button type="button" role="tab" id="tabStudies" data-tab="studies" aria-selected="false">Studies</button>
+		</div>
+	</div>
+
+	<form id="controls" class="controls" autocomplete="off" novalidate>
+		<label>Problem
+			<select name="problem">
+				<option value="partition">Number partitioning (rank 1)</option>
+				<option value="sk">SK spin glass, ±1 (dense)</option>
+				<option value="sk-gauss">SK spin glass, Gaussian (dense)</option>
+				<option value="maxcut">Max-Cut, random 3-regular graph</option>
+				<option value="chain">Long-range chain, J = 1/r^α</option>
+				<option value="hopfield">Hopfield memory (rank P)</option>
+			</select>
+		</label>
+		<label>N spins <input name="n" type="number" min="1" step="1" value="24"></label>
+		<label>Layers <input name="layers" type="number" min="1" max="5000" step="1" value="100"></label>
+		<label>dt <input name="dt" type="number" min="0.01" max="100" step="any" value="0.5"></label>
+		<label data-problem="maxcut">Degree <input name="degree" type="number" min="1" max="50" step="1" value="3"></label>
+		<label data-problem="chain">α <input name="alpha" type="number" min="0" max="10" step="any" value="3"></label>
+		<label data-problem="hopfield">Patterns <input name="patterns" type="number" min="1" step="1" value="10"></label>
+		<label data-problem="hopfield">Cue noise <input name="noise" type="number" min="0" max="0.5" step="any" value="0.2"></label>
+		<label>Engine
+			<select name="engine">
+				<option value="hw">hw: bit-exact FPGA</option>
+				<option value="float">float</option>
+			</select>
+		</label>
+		<label>Schedule
+			<select name="schedule">
+				<option value="ramp">linear ramp</option>
+				<option value="lut">angle_lut (hw test)</option>
+			</select>
+		</label>
+		<label>Start
+			<select name="init">
+				<option value="x">along +x</option>
+				<option value="random">random</option>
+			</select>
+		</label>
+		<label>Tilt <input name="tilt" type="number" min="0" max="1" step="any" value="0.05"></label>
+		<label>Seed <input name="seed" type="number" min="0" step="1" value="1"></label>
+		<div class="buttons">
+			<button type="submit" id="run" class="primary">Run</button>
+			<label class="file">Load JSON<input type="file" class="loadfile" accept=".json,application/json"></label>
+		</div>
+	</form>
+
+	<form id="studyForm" class="controls" autocomplete="off" novalidate hidden>
+		<label>Study
+			<select name="study">
+				<option value="scaling">Spin glass toward N → ∞</option>
+				<option value="sweep">Schedule sweep: layers × dt</option>
+				<option value="squeezing">Squeezing from classical runs</option>
+			</select>
+		</label>
+		<label data-study="scaling sweep">Problem
+			<select name="problem">
+				<option value="sk">SK spin glass, ±1</option>
+				<option value="sk-gauss">SK spin glass, Gaussian</option>
+				<option value="partition" data-sweep-only>Number partitioning</option>
+				<option value="maxcut" data-sweep-only>Max-Cut, random regular graph</option>
+				<option value="chain" data-sweep-only>Long-range chain</option>
+				<option value="hopfield" data-sweep-only>Hopfield memory</option>
+			</select>
+		</label>
+		<label data-study="scaling" class="wide">Sizes N <input name="sizes" type="text" inputmode="numeric" value="250,500,1000,2000,4000,8000"></label>
+		<label data-study="sweep squeezing">N spins <input name="n" type="number" min="2" step="1" value="300"></label>
+		<label data-study="sweep" data-problem="maxcut">Degree <input name="degree" type="number" min="1" max="50" step="1" value="3"></label>
+		<label data-study="sweep" data-problem="chain">α <input name="alpha" type="number" min="0" max="10" step="any" value="3"></label>
+		<label data-study="sweep" data-problem="hopfield">Patterns <input name="patterns" type="number" min="1" step="1" value="10"></label>
+		<label data-study="sweep" data-problem="hopfield">Cue noise <input name="noise" type="number" min="0" max="0.5" step="any" value="0.2"></label>
+		<label data-study="scaling">Layers <input name="layers" type="number" min="1" max="5000" step="1" value="200"></label>
+		<label data-study="scaling">dt <input name="dt" type="number" min="0.01" max="100" step="any" value="0.3"></label>
+		<label data-study="sweep" class="wide">Layers list <input name="layers_list" type="text" inputmode="numeric" value="25,50,100,200,400,800"></label>
+		<label data-study="sweep" class="wide">dt list <input name="dt_list" type="text" inputmode="decimal" value="0.1,0.2,0.3,0.5,0.8,1.2"></label>
+		<label data-study="scaling sweep">Instances <input name="seeds" type="number" min="1" max="1000" step="1" value="10"></label>
+		<label data-study="squeezing">Trajectories <input name="trajectories" type="number" min="10" step="1" value="2000"></label>
+		<label data-study="squeezing">Times <input name="times" type="number" min="2" max="1000" step="1" value="60"></label>
+		<label data-study="squeezing">Max χt <input name="t_max" type="number" min="0" step="any" placeholder="2/√N"></label>
+		<label>Seed <input name="seed" type="number" min="0" step="1" value="1"></label>
+		<div class="buttons">
+			<div class="seg" id="presets" role="group" aria-label="Presets">
+				<button type="button" data-preset="quick">Quick</button>
+				<button type="button" data-preset="big">Big (about a minute)</button>
+			</div>
+			<button type="submit" id="studyStart" class="primary">Start</button>
+			<button type="button" id="studyCancel" disabled>Cancel</button>
+			<label class="file">Load JSON<input type="file" class="loadfile" accept=".json,application/json"></label>
+		</div>
+	</form>
+
+	<div id="status" class="status" role="status" aria-live="polite"></div>
+	<div id="studyStatus" class="studystatus" hidden>
+		<div class="progress" aria-hidden="true"><div class="fill" id="studyFill"></div></div>
+		<div class="status" id="studyMessage" role="status" aria-live="polite"></div>
+	</div>
+</header>
+
+<div class="layerbar" id="layerbar">
+	<button id="play" type="button" class="play" aria-label="Play">▶</button>
+	<input id="layer" type="range" min="0" max="0" value="0" aria-label="Layer">
+	<span id="layerlabel" class="layerlabel">No run yet</span>
+</div>
+
+<main class="grid" id="grid">
+	<section class="card span5">
+		<h2>What is being solved</h2>
+		<div id="about" class="prose"></div>
+	</section>
+
+	<section class="card span7">
+		<div class="cardhead">
+			<h2 id="problemTitle">The problem</h2>
+			<div class="toggles">
+				<div class="seg" id="setsMode" role="group" aria-label="Which split to show">
+					<button type="button" data-mode="layer">This layer</button>
+					<button type="button" data-mode="final">Final</button>
+					<button type="button" data-mode="local">Final + local search</button>
+				</div>
+				<div class="seg" id="skView" role="group" aria-label="Heatmap view">
+					<button type="button" data-view="j">J<sub>ij</sub></button>
+					<button type="button" data-view="frustration">J<sub>ij</sub> s<sub>i</sub> s<sub>j</sub></button>
+				</div>
+			</div>
+		</div>
+		<p id="problemCaption" class="caption"></p>
+		<canvas id="problemCanvas" class="chart"></canvas>
+		<div class="legend" id="problemLegend"></div>
+		<p id="problemCaption2" class="caption gap" hidden></p>
+		<canvas id="problemCanvas2" class="chart short" hidden></canvas>
+		<div id="problemNote"></div>
+	</section>
+
+	<section class="card span5">
+		<h2>Spins on the Bloch sphere</h2>
+		<p class="caption">Each dot is one spin (x, y, z). Drag to turn the sphere.</p>
+		<canvas id="sphere" class="sphere"></canvas>
+		<div class="legend" id="sphereLegend"></div>
+	</section>
+
+	<section class="card span7">
+		<h2>Energy per layer</h2>
+		<p class="caption" id="energyCaption"></p>
+		<canvas id="energy" class="chart tall"></canvas>
+		<div class="legend" id="energyLegend"></div>
+	</section>
+
+	<section class="card span6" id="metricCard">
+		<h2 id="metricTitle">Result per layer</h2>
+		<p class="caption" id="metricCaption"></p>
+		<canvas id="metric" class="chart"></canvas>
+		<div class="legend" id="metricLegend"></div>
+	</section>
+
+	<section class="card span6" id="scheduleCard">
+		<h2>Schedule γ<sub>k</sub>, β<sub>k</sub></h2>
+		<p class="caption" id="scheduleCaption"></p>
+		<canvas id="schedule" class="chart"></canvas>
+		<div class="legend" id="scheduleLegend"></div>
+	</section>
+
+	<section class="card span4" id="histCard">
+		<h2>z of every spin at this layer</h2>
+		<p class="caption">Rounding sends z &gt; 0 to s = +1 and z &lt; 0 to s = −1.</p>
+		<canvas id="hist" class="chart"></canvas>
+	</section>
+
+	<section class="card span8" id="resultsCard">
+		<h2>Results</h2>
+		<div id="results"></div>
+	</section>
+</main>
+
+<main class="grid" id="studies" hidden>
+	<section class="card span5">
+		<h2 id="studyAboutTitle">About this study</h2>
+		<div id="studyAbout" class="prose"></div>
+	</section>
+
+	<section class="card span7">
+		<div class="cardhead">
+			<h2 id="studyChartTitle">Result</h2>
+			<div class="seg" id="sweepView" role="group" aria-label="Which result to show" hidden>
+				<button type="button" data-view="grid">Mean field</button>
+				<button type="button" data-view="grid_local">+ local search</button>
+				<button type="button" data-view="grid_energy">Energy per spin</button>
+			</div>
+		</div>
+		<p class="caption" id="studyChartCaption"></p>
+		<canvas id="studyChart" class="chart tall"></canvas>
+		<div class="legend" id="studyLegend"></div>
+	</section>
+
+	<section class="card span6" id="studyCard2" hidden>
+		<h2 id="studyChart2Title"></h2>
+		<p class="caption" id="studyChart2Caption"></p>
+		<canvas id="studyChart2" class="chart"></canvas>
+		<div class="legend" id="studyLegend2"></div>
+	</section>
+
+	<section class="card span6" id="studyResultsCard">
+		<h2>Results</h2>
+		<div id="studyResults"><p class="caption">Start a study, or load a study's JSON file.</p></div>
+	</section>
+</main>
+
+<footer class="foot">
+	Served by <code>viral-sim serve</code> (simulator/). Runs and studies also save as JSON with
+	<code>viral-sim run --json FILE</code> or <code>viral-sim study --json FILE</code>, which this page can load.
+</footer>
+
+<div id="tooltip" class="tooltip" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

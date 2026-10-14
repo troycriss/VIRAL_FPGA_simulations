@@ -50,8 +50,9 @@ instead of O(N²).
   so the energy is just (S² − Σ z<sub>i</sub>²)/2, where S = Σ z<sub>i</sub>. It depends only on
   the total z, and the minimum is any state with S = 0.
 - **Rank-1 coupling is cheap on a CPU too.** Spins interact only through S,
-  with or without weights, so a CPU could simulate 60,000 spins over
-  2 layers in about a millisecond.
+  with or without weights. The bit-exact CPU model in `simulator/` runs
+  49,152 spins over 2 layers in 0.32 ms on an Apple M3, against about
+  0.49 ms estimated for the FPGA (see [CPU simulator](#cpu-simulator-and-web-page)).
 - **Little comes out.** The only output is 8 LEDs of energy. Useful runs
   would need the final spins read out (the signs of z are a candidate
   solution), and γ and β loaded from a host computer so that an optimizer
@@ -86,6 +87,8 @@ to fit in block RAM alongside the spins.
 | `gen_weights.py` | Writes spin weight files (`WEIGHT_FILE`) for `VIRAL_n_spin` |
 | `sim/` | Icarus Verilog testbenches: `sh sim/run_sims.sh` |
 | `synth/` | Yosys resource comparison: `sh synth/run_synth.sh` |
+| `simulator/` | Rust CPU simulator: bit-exact model of `VIRAL_n_spin`, dense-J model, benchmark, web server ([README](simulator/README.md)) |
+| `web/` | Web page that shows a run: the problem, the spins on the Bloch sphere, the energy per layer, the result |
 
 ## Number formats
 
@@ -435,10 +438,10 @@ press material; figures for this design are estimates.
   one shared pipeline per clock. The other machines run hundreds to
   thousands of units in parallel, so they do roughly 100 to 10,000 times
   more work per clock, usually on larger FPGAs.
-- **Against a CPU, the gain is small for now.** Rank-1 coupling makes each
-  layer O(N) on a CPU too. One CPU core could run the same 49,000-spin,
-  2-layer case in roughly a millisecond, so the FPGA is about 1 to a few
-  times faster than one core. The other machines win because their problems
+- **Against a CPU, there is no gain for now.** Rank-1 coupling makes each
+  layer O(N) on a CPU too. Measured with `simulator/`, an Apple M3 runs the
+  same 49,152-spin, 2-layer case bit for bit in 0.80 ms on one core and
+  0.32 ms on all 8, against about 0.49 ms for the FPGA. The other machines win because their problems
   need O(N²) work per step for dense J, or O(edges) for sparse J, and that
   is where parallel hardware pays off.
 - **Solution quality is a separate question.** MF-AOA uses a few
@@ -485,6 +488,58 @@ solvers of combinatorial optimization problems](https://arxiv.org/abs/2204.00276
 - **`tb_direct_vs_new.v`:** `synth/VIRAL_n_spin_direct.v` against
   `VIRAL_n_spin` at 3, 4, 10 and 100 spins: same final spins, plus clock
   counts.
+
+## CPU simulator and web page
+
+`simulator/` is a Rust program (no dependencies) that runs the same
+computation on a CPU, and `web/` is a page that shows it:
+
+```sh
+cd simulator && cargo build --release
+./target/release/viral-sim serve      # open http://127.0.0.1:8080/
+./target/release/viral-sim bench      # this CPU against the FPGA estimates
+sh check_hw.sh                        # Rust against the Verilog, bit for bit
+```
+
+- **A bit-exact model of `VIRAL_n_spin`.** It gives the same final spins,
+  energy, LEDs and clock count as the Verilog simulation. `check_hw.sh`
+  checks 11 cases, up to 3,000 spins with weights and the full 32-bit γ.
+- **A floating-point model for six problems:**
+  - number partitioning (the hardware's rank-1 coupling);
+  - the Sherrington-Kirkpatrick spin glass;
+  - Max-Cut on random 3-regular graphs;
+  - the long-range Ising chain of trapped-ion simulators;
+  - a Hopfield associative memory.
+- **Classical baselines** to judge each result: exact optima, Karmarkar-Karp,
+  local search, and known limits.
+- **Studies** that take many runs:
+  - SK energy extrapolated to N → ∞;
+  - a sweep over layers and dt;
+  - quantum spin squeezing from many classical runs (the discrete truncated
+    Wigner method), checked against the exact result.
+- **The page** shows the problem, the spins on the Bloch sphere layer by
+  layer, the energy and the problem's own measure per layer, the result
+  against the baselines, and the studies as they run.
+
+What it shows:
+
+- **SK spin glass:** with 500 layers, mean field extrapolates to −0.7543
+  per spin as N → ∞, 1.2% above the ground state of −0.7632.
+- **Max-Cut:** mean field cuts about 90% of the edges, against 69.24% for
+  QAOA with one layer.
+- **Long-range chain:** a slow anneal reaches perfect alternation; fast
+  ones leave defects.
+- **Hopfield memory:** annealing recalls a pattern only below a load of
+  about 0.05, as theory predicts.
+- **Squeezing:** averaging classical runs reproduces the quantum squeezing
+  to within 0.2 dB.
+- **Number partitioning:** hard for mean field; Karmarkar-Karp does far
+  better.
+- **Speed, rank 1:** an Apple M3 matches the Cyclone 10 GX estimate.
+- **Speed, dense J:** the proposed Agilex 7 design would be about 25 times
+  faster than the M3, at 8,700 spins.
+
+Details are in [simulator/README.md](simulator/README.md).
 
 ## Synthesis comparison
 

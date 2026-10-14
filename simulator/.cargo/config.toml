@@ -1,0 +1,3 @@
+# Use every instruction this CPU has (NEON/FMA on Apple silicon, AVX on x86).
+[build]
+rustflags = ["-C", "target-cpu=native"]
